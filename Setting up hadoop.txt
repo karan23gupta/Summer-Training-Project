@@ -1,0 +1,127 @@
+sudo apt-get update
+sudo apt-get upgrade
+
+#hadoop-user
+sudo addgroup hadoop
+sudo adduser --ingroup hadoop hadoop-user
+
+#installing java
+sudo apt purge openjdk*
+sudo add-apt-repository -y ppa:webupd8team/java
+sudo apt update
+sudo apt install -y oracle-java8-installer
+
+#setting up $java_home
+sudo sh -c 'echo "export JAVA_HOME=/usr" >> /etc/profile'
+source /etc/profile
+
+#hadoop doesn't work with IPV6, switch to root and disable it
+#Append to "/etc/sysctl.conf"
+net.ipv6.conf.all.disable_ipv6 = 1
+net.ipv6.conf.default.disable_ipv6 = 1
+net.ipv6.conf.lo.disable_ipv6 = 1
+
+#setup SSH
+sudo apt-get install openssh-server
+#key-pair associated with hadoop-user
+su - hadoop-user
+ssh-keygen -t rsa -P ""
+cat $HOME/.ssh/id_rsa.pub >> $HOME/.ssh/authorized_keys
+ssh localhost
+
+#<--Hadoop-->
+#download and install
+wget http://mirror.nohup.it/apache/hadoop/common/hadoop-2.7.1/hadoop-2.7.1.tar.gz
+tar xzf hadoop-2.7.1.tar.gz
+rm hadoop-2.7.1.tar.gz
+sudo mv hadoop-2.7.1 /usr/local
+sudo ln -sf /usr/local/hadoop-2.7.1/ /usr/local/hadoop
+sudo chown -R hadoop-user:hadoop /usr/localhadoop-2.7.1/
+
+#user environment
+
+#append to ~/.bashrc
+# Set Hadoop-related environment variables
+export HADOOP_PREFIX=/usr/local/hadoop
+export HADOOP_HOME=/usr/local/hadoop
+export HADOOP_MAPRED_HOME=${HADOOP_HOME}
+export HADOOP_COMMON_HOME=${HADOOP_HOME}
+export HADOOP_HDFS_HOME=${HADOOP_HOME}
+export YARN_HOME=${HADOOP_HOME}
+export HADOOP_CONF_DIR=${HADOOP_HOME}/etc/hadoop
+# Native path
+export HADOOP_COMMON_LIB_NATIVE_DIR=${HADOOP_PREFIX}/lib/native
+export HADOOP_OPTS="-Djava.library.path=$HADOOP_PREFIX/lib/native"
+# Java path
+export JAVA_HOME="/usr"
+# Add Hadoop bin/ directory to PATH
+export PATH=$PATH:$HADOOP_HOME/bin:$JAVA_PATH/bin:$HADOOP_HOME/sbin
+
+#reload .bashrc
+source .bashrc
+
+
+#configure hadoop
+#Edit the following file in /usr/local/hadoop/etc/hadoop/
+#yarn-site.xml
+<configuration>
+  <property>
+    <name>yarn.nodemanager.aux-services</name>
+    <value>mapreduce_shuffle</value>
+  </property>
+  <property>
+  <name>yarn.nodemanager.aux-services.mapreduce.shuffle.class</name>
+  <value>org.apache.hadoop.mapred.ShuffleHandler</value>
+  </property>
+</configuration>
+
+#core-site.xml
+<configuration>
+  <property>
+	<name>fs.defaultFS</name>
+	<value>hdfs://localhost:9000</value>
+  </property>
+</configuration>
+
+#mapred-site.xml created via cp mapred-site.xml.template mapred-site.xml
+cp /usr/local/hadoop/etc/hadoop/mapred-site.xml.template /usr/local/hadoop/etc/hadoop/mapred-site.xml
+<configuration>
+  <property>
+    <name>mapreduce.framework.name</name>
+    <value>yarn</value>
+  </property>
+</configuration>
+
+#hdfs-site.xml
+<configuration>
+  <property>
+    <name>dfs.replication</name>
+    <value>1</value>
+  </property>
+  <property>
+    <name>dfs.namenode.name.dir</name>
+    <value>file:/usr/local/hadoop/yarn_data/hdfs/namenode</value>
+  </property>
+  <property>
+    <name>dfs.datanode.data.dir</name>
+    <value>file:/usr/local/hadoop/yarn_data/hdfs/datanode</value>
+  </property>
+</configuration>
+
+#creating namenode and datanode
+mkdir -p /usr/local/hadoop/yarn_data/hdfs/namenode
+mkdir -p /usr/local/hadoop/yarn_data/hdfs/datanode
+
+#formatting DFS
+hdfs namenode -format
+
+#starting
+start-dfs.sh
+start-yarn.sh
+#user directory
+hdfs dfs -mkdir /user
+hdfs dfs -mkdir /user/hadoop-user
+
+#test 
+hadoop jar /usr/local/hadoop/share/hadoop/mapreduce/hadoop-mapreduce-examples-2.7.1.jar pi 10 1000
+Answer: Estimated value of Pi is 3.14080000000000000000
